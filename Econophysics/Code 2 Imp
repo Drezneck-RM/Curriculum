@@ -1,0 +1,161 @@
+% Parámetros
+N = 10000; % Número de agentes
+M0 = 3000; % Cantidad inicial de dinero por agente
+T = 150000; % Número de transacciones
+bins = 50; % Número de intervalos para el histograma
+actualizar_intervalo = 500; % Actualizar la gráfica cada 'actualizar_intervalo' transacciones
+m_max = 5 * M0; % Valor máximo de dinero para la distribución uniforme
+repartir_intervalo = 1000; % Repartir impuestos cada 'repartir_intervalo' transacciones
+
+% Inicializar distribuciones de dinero
+M_igual = M0 * ones(N, 1);
+M_uniforme = randi([0, m_max], N, 1);
+
+% Inicializar bolsa de gobierno
+gobierno_igual = 0;
+gobierno_uniforme = 0;
+
+% Inicializar gráficas
+figure;
+
+% Calcular bordes de los bins
+bin_edges = linspace(0, m_max, bins + 1);
+
+% Inicializar vectores para almacenar entropía en función del tiempo
+entropia_igual = [];
+entropia_uniforme = [];
+
+% Configurar escritor de video
+video = VideoWriter('modelo_economico_impuestos.avi');
+video.FrameRate = 24; % Velocidad de fotogramas del video
+open(video);
+% Configurar el tamaño de la figura para 1080p
+figure_width = 1920;
+figure_height = 1080;
+
+% Crear la figura y ajustar el tamaño
+fig = figure;
+set(fig, 'Position', [0, 0, figure_width, figure_height]);
+
+% Realizar transacciones y actualizar gráficas
+for t = 1:T
+    % Realizar transacciones para ambas distribuciones iniciales
+    for k = 1:2
+        % Seleccionar dos agentes aleatorios
+        i = randi(N);
+        j = randi(N);
+
+        % Continuar si los agentes seleccionados son los mismos
+        if i == j
+            continue;
+        end
+
+        % Realizar transacción
+        s = rand; % Fracción aleatoria de dinero
+
+        if k == 1
+            % Distribución inicial igual
+            deltaM = s * M_igual(i); % Cantidad de dinero intercambiado
+            
+            % Calcular impuestos
+            if i <= N * 0.1
+                impuesto = 0.5 * deltaM;
+            elseif i <= N * 0.7
+                impuesto = 0.25 * deltaM;
+            else
+                impuesto = 0;
+            end
+            deltaM = deltaM - impuesto;
+            gobierno_igual = gobierno_igual + impuesto;
+            
+            M_igual(i) = M_igual(i) - deltaM;
+            M_igual(j) = M_igual(j) + deltaM;
+        else
+            % Distribución inicial uniforme
+            deltaM = s * M_uniforme(i); % Cantidad de dinero intercambiado
+            
+            % Calcular impuestos
+            if i <= N * 0.1
+                 impuesto = 0.5 * deltaM;
+            elseif i <= N * 0.7
+                impuesto = 0.25 * deltaM;
+            else
+                impuesto = 0;
+            end
+            deltaM = deltaM - impuesto;
+            gobierno_uniforme = gobierno_uniforme + impuesto;
+            
+            M_uniforme(i) = M_uniforme(i) - deltaM;
+            M_uniforme(j) = M_uniforme(j) + deltaM;
+        end
+    end
+
+    % Repartir impuestos cada 'repartir_intervalo' transacciones
+    if mod(t, repartir_intervalo) == 0
+        M_igual = M_igual + gobierno_igual / N;
+        M_uniforme = M_uniforme + gobierno_uniforme / N;
+        gobierno_igual = 0;
+        gobierno_uniforme = 0;
+    end
+
+    % Actualizar gráficas y guardar fotograma en el video
+    if mod(t, actualizar_intervalo) == 0
+        % Calcular entropía
+        hist_igual = histcounts(M_igual, bin_edges);
+        hist_uniforme = histcounts(M_uniforme, bin_edges);
+        entropia_igual = [entropia_igual, -sum((hist_igual(hist_igual > 0) / N) .* log(hist_igual(hist_igual > 0) / N))];
+        entropia_uniforme = [entropia_uniforme, -sum((hist_uniforme(hist_uniforme > 0) / N) .* log(hist_uniforme(hist_uniforme > 0) / N))];
+        
+        % Actualizar gráficas de distribuciones de dinero
+        for dist = 1:2
+            for escala = 1:2
+                subplot_index = (dist - 1) * 2 + escala;
+
+                % Actualizar histogramas
+                if dist == 1
+                    histogram_data = M_igual;
+                    dist_title = 'Distribución inicial igual';
+                else
+                    histogram_data = M_uniforme;
+                    dist_title = 'Distribución inicial uniforme';
+                end
+
+                if escala == 1
+                    escala_title = 'Escala lineal';
+                else
+                    escala_title = 'Escala S.log';
+                end
+
+                subplot(2, 4, subplot_index);
+                histogram(histogram_data, bin_edges);
+                xlabel('Dinero');
+                ylabel('Número de agentes');
+                title(sprintf('%s - %s (t = %d)', dist_title, escala_title, t));
+                xlim([0, m_max]);
+                ylim([0, N]);
+
+                if escala == 2
+                    set(gca, 'YScale', 'log');
+                end
+            end
+        end
+        
+        % Actualizar gráfica de entropía
+        subplot(2, 4, [5, 6, 7, 8]);
+        plot((1:numel(entropia_igual)) * actualizar_intervalo, entropia_igual, 'DisplayName', 'Igual');
+        hold on;
+        plot((1:numel(entropia_uniforme)) * actualizar_intervalo, entropia_uniforme, 'DisplayName', 'Uniforme');
+        hold off;
+        xlabel('Tiempo (t)');
+        ylabel('Entropía');
+        title('Entropía en función del tiempo');
+        legend('show');
+        
+        % Guardar fotograma en el video
+        fotograma = getframe(gcf);
+        writeVideo(video, fotograma);
+    end
+end
+
+% Cerrar el archivo de video
+close(video);
